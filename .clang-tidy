@@ -1,0 +1,44 @@
+# Based on https://github.com/carbon-language
+# - google-readability-function-size overlaps with readability-function-size.
+# - modernize-use-nodiscard is disabled because it only fixes const methods,
+#   not non-const, which yields distracting results on accessors.
+# - performance-unnecessary-value-param is disabled because it duplicate
+#   modernize-pass-by-value.
+Checks:
+  -*, bugprone-*, -bugprone-branch-clone, -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions, google-*, -google-readability-function-size,
+  -google-readability-todo, misc-definitions-in-headers, misc-misplaced-const,
+  misc-redundant-expression, misc-static-assert,
+  misc-unconventional-assign-operator, misc-uniqueptr-reset-release,
+  misc-unused-*, modernize-*, -modernize-avoid-c-arrays,
+  -modernize-return-braced-init-list, -modernize-use-default-member-init,
+  -modernize-use-emplace, -modernize-use-nodiscard, performance-*,
+  -performance-unnecessary-value-param, readability-*,
+  -readability-convert-member-functions-to-static,
+  -readability-function-cognitive-complexity, -readability-else-after-return,
+  -readability-identifier-length, -readability-implicit-bool-conversion,
+  -readability-magic-numbers, -readability-make-member-function-const,
+  -readability-static-definition-in-anonymous-namespace,
+  -readability-suspicious-call-argument, -readability-use-anyofallof
+WarningsAsErrors: true
+CheckOptions:
+  - key:             readability-identifier-naming.ClassCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.FunctionCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.MemberCase
+    value:           camelBack
+  - key:             readability-identifier-naming.ParameterCase
+    value:           camelBack
+  - key:             readability-identifier-naming.UnionCase
+    value:           camelBack
+  - key:             readability-identifier-naming.VariableCase
+    value:           camelBack
+  - key:             readability-identifier-naming.IgnoreMainLikeFunctions
+    value:           1
+  - key:             readability-redundant-member-init.IgnoreBaseInCopyConstructors
+    value:           1
+  - key:             modernize-use-default-member-init.UseAssignment
+    value:           1
