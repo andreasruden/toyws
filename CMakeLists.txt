@@ -17,6 +17,8 @@ include(cmake/variables.cmake)
 
 add_library(
     toyws_toyws
+    source/io_service_uring.cpp
+    source/request_pool.cpp
     source/toyws.cpp
 )
 add_library(toyws::toyws ALIAS toyws_toyws)
@@ -58,7 +60,13 @@ target_include_directories(
 target_compile_features(toyws_toyws PUBLIC cxx_std_20)
 
 find_package(fmt REQUIRED)
+find_package(liburing REQUIRED)
 target_link_libraries(toyws_toyws PRIVATE fmt::fmt)
+target_link_libraries(toyws_toyws PRIVATE liburing::liburing)
+
+# ---- Examples ----
+# TODO: Only include if examples are "requested"
+add_subdirectory(example/ssr)
 
 # ---- Install rules ----
 

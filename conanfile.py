@@ -10,6 +10,7 @@ class Recipe(ConanFile):
 
     def requirements(self):
         self.requires("fmt/10.1.1")
+        self.requires("liburing/2.4")
 
     def build_requirements(self):
         self.test_requires("catch2/3.4.0")

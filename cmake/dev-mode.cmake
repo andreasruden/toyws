@@ -18,4 +18,6 @@ endif()
 include(cmake/lint-targets.cmake)
 include(cmake/spell-targets.cmake)
 
+set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
+
 add_folders(Project)
