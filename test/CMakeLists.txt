@@ -17,7 +17,11 @@ include(Catch)
 
 # ---- Tests ----
 
-add_executable(toyws_test source/toyws_test.cpp)
+add_executable(toyws_test
+    source/http_io_test.cpp
+    source/io_service_test.cpp
+    source/toyws_test.cpp
+)
 target_link_libraries(
     toyws_test PRIVATE
     toyws::toyws
@@ -26,16 +30,6 @@ target_link_libraries(
 target_compile_features(toyws_test PRIVATE cxx_std_20)
 
 catch_discover_tests(toyws_test)
-
-add_executable(io_service_test source/io_service_test.cpp)
-target_link_libraries(
-    io_service_test PRIVATE
-    toyws::toyws
-    Catch2::Catch2WithMain
-)
-target_compile_features(io_service_test PRIVATE cxx_std_20)
-
-catch_discover_tests(io_service_test)
 
 # ---- End-of-file commands ----
 
