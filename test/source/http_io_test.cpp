@@ -1,7 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <string>
 
+#include "toyws/http_headers_map.hpp"
 #include "toyws/http_request.hpp"
+#include "toyws/http_response.hpp"
 
 // Get request to /
 auto getRequest = std::string(
@@ -68,4 +70,30 @@ TEST_CASE("Basic Post Request", "[library]") {
 
   REQUIRE(req.Body().size() == 25);
   REQUIRE(req.Body() == "fname=Smith&lname=Johnson");
+}
+
+TEST_CASE("Basic OK Response", "[library]") {
+  toyws::HttpResponse response{toyws::HttpStatus::kOk};
+  std::string expected{"HTTP/1.1 200 OK\r\n\r\n"};
+  std::string buf;
+  buf.resize(expected.size());
+  response.Write(buf.data(), expected.size());
+
+  REQUIRE(expected == buf);
+}
+
+TEST_CASE("Response with Headers", "[library]") {
+  toyws::HeadersMap headers{{"Server", "ToyWS"}, {"Connection", "Close"}};
+  toyws::HttpResponse response{toyws::HttpStatus::kUnauthorized, "Unauthorized",
+                               std::move(headers)};
+  std::string expected{
+      "HTTP/1.1 401 Unauthorized\r\n"
+      "Connection: Close\r\n"
+      "Server: ToyWS\r\n"
+      "\r\n"};
+  std::string buf;
+  buf.resize(expected.size());
+  response.Write(buf.data(), expected.size());
+
+  REQUIRE(expected == buf);
 }

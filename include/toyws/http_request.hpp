@@ -5,10 +5,11 @@
 #include <unordered_map>
 
 #include "toyws/error.hpp"
+#include "toyws/http_headers_map.hpp"
+
+struct HttpRequestEditor;
 
 namespace toyws {
-
-using HeadersMap = std::unordered_map<std::string, std::string>;
 
 enum class HttpMethod {
   // NOTE: This violates enum naming conventions of the project. But matches the
@@ -42,6 +43,8 @@ class HttpRequest {
 
   auto Method() const -> HttpMethod { return method; }
 
+  auto Resource() const -> const std::string& { return resource; }
+
   auto Headers() const -> const HeadersMap& { return headers; }
 
   auto Body() const -> const std::string& { return body; }
@@ -52,8 +55,7 @@ class HttpRequest {
   HeadersMap headers;
   std::string body;
 
-  template <typename T>
-  friend class HttpIo;
+  friend struct ::HttpRequestEditor;
 };
 
 inline auto ParseHttpMethod(const std::string& str) -> HttpMethod {
