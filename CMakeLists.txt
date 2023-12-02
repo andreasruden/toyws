@@ -20,6 +20,7 @@ add_library(
     source/http_io.cpp
     source/io_service_uring.cpp
     source/request_pool.cpp
+    source/test_client.cpp
     source/toyws.cpp
 )
 add_library(toyws::toyws ALIAS toyws_toyws)

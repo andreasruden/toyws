@@ -8,6 +8,8 @@
 #include "toyws/error.hpp"
 #include "toyws/http_headers_map.hpp"
 
+struct HttpResponseEditor;
+
 namespace toyws {
 
 enum class HttpStatus {
@@ -47,6 +49,7 @@ class HttpStatusError : public Error {
 class HttpResponse {
  public:
   /* Constructors */
+  HttpResponse() = default;
   explicit HttpResponse(HttpStatus statusCode) : status{statusCode} {
     FillReason();
   }
@@ -82,6 +85,15 @@ class HttpResponse {
    */
   auto Write(char* data, std::size_t capacity) -> std::pair<bool, std::size_t>;
 
+  /**
+   * @brief Parse HTTP data from given buffer.
+   * @return A truth value if the HTTP read has read a full request. A false
+   * value if data is missing. If data is missing, another Read
+   * request can be issued to "fill in" the missing pieces, without
+   * resupplying the same data.
+   */
+  auto Read(const char* data, std::size_t length) -> bool;
+
   auto Status() const -> HttpStatus { return status; }
 
   auto Reason() const -> const std::string& { return reason; }
@@ -104,8 +116,37 @@ class HttpResponse {
     }
   }
 
-  template <typename T>
-  friend class HttpIo;
+  friend struct ::HttpResponseEditor;
 };
+
+inline auto ParseHttpStatus(const std::string& str) -> HttpStatus {
+  auto status = static_cast<HttpStatus>(std::stoi(str));
+  switch (status) {
+    case HttpStatus::kOk:
+      return status;
+    case HttpStatus::kFound:
+      return status;
+    case HttpStatus::kSeeOther:
+      return status;
+    case HttpStatus::kBadRequest:
+      return status;
+    case HttpStatus::kUnauthorized:
+      return status;
+    case HttpStatus::kForbidden:
+      return status;
+    case HttpStatus::kNotFound:
+      return status;
+    case HttpStatus::kUnprocessableContent:
+      return status;
+    case HttpStatus::kTooManyRequests:
+      return status;
+    case HttpStatus::kInternalServerError:
+      return status;
+    case HttpStatus::kHttpVersionNotSupported:
+      return status;
+  }
+
+  throw Error(str + " is not a valid HttpStatus");
+}
 
 }  // namespace toyws

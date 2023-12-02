@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "toyws/error.hpp"
 #include "toyws/http_headers_map.hpp"
@@ -33,13 +35,41 @@ enum class HttpMethod {
  */
 class HttpRequest {
  public:
+  HttpRequest() = default;
+  HttpRequest(HttpMethod httpMethod, std::string targetResource)
+      : method{httpMethod}, resource{std::move(targetResource)} {}
+  HttpRequest(HttpMethod httpMethod, std::string targetResource,
+              HeadersMap httpHeaders)
+      : method{httpMethod},
+        resource{std::move(targetResource)},
+        headers{std::move(httpHeaders)} {}
+  HttpRequest(HttpMethod httpMethod, std::string targetResource,
+              HeadersMap httpHeaders, std::string requestBody)
+      : method{httpMethod},
+        resource{std::move(targetResource)},
+        headers{std::move(httpHeaders)},
+        body{std::move(requestBody)} {}
+  HttpRequest(HttpMethod httpMethod, std::string targetResource,
+              std::string requestBody)
+      : method{httpMethod},
+        resource{std::move(targetResource)},
+        body{std::move(requestBody)} {}
+
   /**
    * @brief Parse HTTP data from given buffer.
    * @return A truth value if the HTTP read has read a full request. A false
-   * value if data is missing. If data is missing, another Read request can be
-   * issued to "fill in" the missing pieces, without resupplying the same data.
+   * value if data is missing. If data is missing, another Read
+   * request can be issued to "fill in" the missing pieces, without
+   * resupplying the same data.
    */
   auto Read(const char* data, std::size_t length) -> bool;
+
+  /**
+   * @brief Write HTTP data.
+   * @return Pair (finished, length) indicating if write was partial
+   * (finished=false) and how many bytes was put into data.
+   */
+  auto Write(char* data, std::size_t capacity) -> std::pair<bool, std::size_t>;
 
   auto Method() const -> HttpMethod { return method; }
 
@@ -80,6 +110,31 @@ inline auto ParseHttpMethod(const std::string& str) -> HttpMethod {
   } else {
     throw Error(std::string("Invalid HttpMethod: ") + str);
   }
+}
+
+inline auto HttpMethodName(HttpMethod method) -> const char* {
+  switch (method) {
+    case HttpMethod::GET:
+      return "GET";
+    case HttpMethod::POST:
+      return "POST";
+    case HttpMethod::PUT:
+      return "PUT";
+    case HttpMethod::PATCH:
+      return "PATCH";
+    case HttpMethod::DELETE:
+      return "DELETE";
+    case HttpMethod::OPTIONS:
+      return "OPTIONS";
+    case HttpMethod::HEAD:
+      return "HEAD";
+    case HttpMethod::TRACE:
+      return "TRACE";
+    case HttpMethod::CONNECT:
+      return "CONNECT";
+  }
+
+  assert(false && "Unhandled HttpMethod in HttpMethodName()");
 }
 
 }  // namespace toyws

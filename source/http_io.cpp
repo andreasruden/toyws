@@ -6,15 +6,29 @@
 #include "toyws/http_request.hpp"
 #include "toyws/http_response.hpp"
 
+inline constexpr int kBufSize = 256;
+
 struct HttpRequestEditor {
   static auto SetMethod(toyws::HttpRequest* request, toyws::HttpMethod method)
       -> void {
     request->method = method;
   }
 
-  static auto SetResource(toyws::HttpRequest* request, std::string&& resource)
+  static auto SetResource(toyws::HttpRequest* request, std::string resource)
       -> void {
     request->resource = std::move(resource);
+  }
+};
+
+struct HttpResponseEditor {
+  static auto SetStatus(toyws::HttpResponse* response, toyws::HttpStatus status)
+      -> void {
+    response->status = status;
+  }
+
+  static auto SetReason(toyws::HttpResponse* response, std::string reason)
+      -> void {
+    response->reason = std::move(reason);
   }
 };
 
@@ -26,6 +40,9 @@ static auto ConsumeNewline(const char* data, std::size_t i, std::size_t length)
 static auto ParseRequestLine(const char* data, std::size_t i,
                              std::size_t length, std::string& buf,
                              toyws::HttpRequest* target) -> std::size_t;
+static auto ParseStatusLine(const char* data, std::size_t i, std::size_t length,
+                            std::string& buf, toyws::HttpResponse* target)
+    -> std::size_t;
 
 static auto ParseHeaderField(const char* data, std::size_t i,
                              std::size_t length, std::string& buf,
@@ -38,11 +55,14 @@ static auto WriteRaw(char* data, std::size_t offset, std::size_t capacity,
     -> std::size_t;
 static auto WriteRaw(char* data, std::size_t offset, std::size_t capacity,
                      const std::string& output, bool& success) -> std::size_t;
+static auto WriteStr(char* data, std::size_t offset, std::size_t capacity,
+                     const char* output, bool& success) -> std::size_t;
 
 // HttpRequest:
 auto toyws::HttpRequest::Read(const char* data, const std::size_t length)
     -> bool {
   std::string buf;
+  buf.reserve(kBufSize);
   std::size_t offset = 0;
 
   offset = ParseRequestLine(data, offset, length, buf, this);
@@ -62,6 +82,33 @@ auto toyws::HttpRequest::Read(const char* data, const std::size_t length)
   return true;
 }
 
+auto toyws::HttpRequest::Write(char* data, std::size_t capacity)
+    -> std::pair<bool, std::size_t> {
+  std::size_t i = 0;
+  bool success;
+
+  // Request Line: "Method SP Resource SP Http-Vers CRLF"
+  i = WriteStr(data, i, capacity, HttpMethodName(method), success);
+  i = WriteStr(data, i, capacity, " ", success);
+  i = WriteRaw(data, i, capacity, resource, success);
+  i = WriteStr(data, i, capacity, " ", success);
+  i = WriteStr(data, i, capacity, "HTTP/1.1\r\n", success);
+
+  // TODO: From here on HttpRequest & HttpResponse can be unified
+  // Header Fields: Key: SP Value CRLF
+  for (const auto& header : headers) {
+    i = WriteRaw(data, i, capacity, header.first, success);
+    i = WriteStr(data, i, capacity, ": ", success);
+    i = WriteRaw(data, i, capacity, header.second, success);
+    i = WriteStr(data, i, capacity, "\r\n", success);
+  }
+
+  // CRLF to seperate header & body
+  i = WriteStr(data, i, capacity, "\r\n", success);
+
+  return std::make_pair(true, i);  // TODO
+}
+
 // HttpResponse:
 auto toyws::HttpResponse::Write(char* data, const std::size_t capacity)
     -> std::pair<bool, std::size_t> {
@@ -71,28 +118,51 @@ auto toyws::HttpResponse::Write(char* data, const std::size_t capacity)
   // TODO: Handle running out of buffer capacity (partial writes)
 
   // Status Line: Http-Version SP Status SP Reason CRLF
-  i = WriteRaw(data, i, capacity, "HTTP/1.1 ", 9, success);
+  i = WriteStr(data, i, capacity, "HTTP/1.1 ", success);
   // TODO: Use std::to_underlying from C++23
   i = WriteRaw(data, i, capacity, std::to_string(static_cast<int>(status)),
                success);
-  i = WriteRaw(data, i, capacity, " ", 1, success);
+  i = WriteRaw(data, i, capacity, " ", success);
   i = WriteRaw(data, i, capacity, reason, success);
-  i = WriteRaw(data, i, capacity, "\r\n", 2, success);
+  i = WriteStr(data, i, capacity, "\r\n", success);
 
   // Header Fields: Key: SP Value CRLF
   for (const auto& header : headers) {
     i = WriteRaw(data, i, capacity, header.first, success);
-    i = WriteRaw(data, i, capacity, ": ", 2, success);
+    i = WriteStr(data, i, capacity, ": ", success);
     i = WriteRaw(data, i, capacity, header.second, success);
-    i = WriteRaw(data, i, capacity, "\r\n", 2, success);
+    i = WriteStr(data, i, capacity, "\r\n", success);
   }
 
   // CRLF to seperate header & body
-  i = WriteRaw(data, i, capacity, "\r\n", 2, success);
+  i = WriteStr(data, i, capacity, "\r\n", success);
 
   // TODO: Write body + content length
 
   return std::make_pair(true, i);  // TODO
+}
+
+auto toyws::HttpResponse::Read(const char* data, const std::size_t length)
+    -> bool {
+  std::string buf;
+  buf.reserve(kBufSize);
+  std::size_t offset = 0;
+
+  offset = ParseStatusLine(data, offset, length, buf, this);
+
+  // TODO: From here on HttpRequest & HttpResponse can be unified
+
+  std::size_t prev;
+  do {
+    prev = offset;
+    offset = ParseHeaderField(data, offset, length, buf, &headers);
+  } while (offset != prev);
+
+  offset = ConsumeNewline(data, offset, length);
+
+  ReadBody(data, offset, length, &body);
+
+  return true;
 }
 
 // Shared Implementation:
@@ -126,21 +196,40 @@ auto ConsumeNewline(const char* data, std::size_t i, std::size_t length)
 auto ParseRequestLine(const char* data, std::size_t i, const std::size_t length,
                       std::string& buf, toyws::HttpRequest* target)
     -> std::size_t {
-  buf.reserve(8);
   i = ReadUntilDelim(data, i, length, ' ', buf) + 1;
   HttpRequestEditor::SetMethod(target, toyws::ParseHttpMethod(buf));
   buf.clear();
 
-  buf.reserve(64);
   i = ReadUntilDelim(data, i, length, ' ', buf) + 1;
-  HttpRequestEditor::SetResource(target, std::move(buf));
+  HttpRequestEditor::SetResource(target, buf);
   buf.clear();
 
-  buf.reserve(9);
   i = ReadUntilDelim(data, i, length, '\r', buf);
   if (buf != "HTTP/1.1") {
     throw toyws::Error(fmt::format("Expected version HTTP/1.1, given {}", buf));
   }
+  buf.clear();
+
+  i = ConsumeNewline(data, i, length);
+
+  return i;
+}
+
+auto ParseStatusLine(const char* data, std::size_t i, std::size_t length,
+                     std::string& buf, toyws::HttpResponse* target)
+    -> std::size_t {
+  i = ReadUntilDelim(data, i, length, ' ', buf) + 1;
+  if (buf != "HTTP/1.1") {
+    throw toyws::Error(fmt::format("Expected version HTTP/1.1, given {}", buf));
+  }
+  buf.clear();
+
+  i = ReadUntilDelim(data, i, length, ' ', buf) + 1;
+  HttpResponseEditor::SetStatus(target, toyws::ParseHttpStatus(buf));
+  buf.clear();
+
+  i = ReadUntilDelim(data, i, length, '\r', buf) + 1;
+  HttpResponseEditor::SetReason(target, buf);
   buf.clear();
 
   i = ConsumeNewline(data, i, length);
@@ -156,9 +245,8 @@ auto ParseHeaderField(const char* data, std::size_t i, const std::size_t length,
   }
 
   // Read "Key:"
-  buf.reserve(32);
   i = ReadUntilDelim(data, i, length, ':', buf) + 1;
-  std::string key{std::move(buf)};
+  std::string key{buf};
   buf.clear();
   if (headers->contains(key)) {
     throw toyws::Error(
@@ -171,9 +259,8 @@ auto ParseHeaderField(const char* data, std::size_t i, const std::size_t length,
   }
 
   // Read rest as header value
-  buf.reserve(128);
   i = ReadUntilDelim(data, i, length, '\r', buf);
-  headers->emplace(std::move(key), std::move(buf));
+  (*headers)[key] = buf;
   buf.clear();
 
   // TODO: Skip optional whitespace at end of value?
@@ -205,4 +292,16 @@ auto WriteRaw(char* data, std::size_t offset, const std::size_t capacity,
               const std::string& output, bool& success) -> std::size_t {
   return WriteRaw(data, offset, capacity, output.c_str(), output.size(),
                   success);
+}
+
+static auto WriteStr(char* data, std::size_t offset, std::size_t capacity,
+                     const char* output, bool& success) -> std::size_t {
+  std::size_t i;
+  for (i = 0; i + offset < capacity && output[i] != '\0'; ++i) {
+    data[i + offset] = output[i];
+  }
+
+  success = output[i] == '\0';
+
+  return offset + i;
 }
