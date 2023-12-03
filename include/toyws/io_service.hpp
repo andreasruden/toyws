@@ -35,14 +35,18 @@ class IoService {
 
   // Shorthand for: TakeClient() and then client.Socket().close()
   auto Close(Client* client) -> void;
+
+  auto SetInstance(ToyWs* parent) -> void;
+  auto Instance() const -> ToyWs*;
 };
 */
 
 /*class IoServiceHandler {
  public:
-  auto OnAccept(IoService* service, Socket listenSock, Client* client) -> void;
+  static auto OnAccept(IoService* service, Socket listenSock, Client* client) ->
+    void;
 
-  auto OnRead(IoService* service, Client* client) -> void;
+  static auto OnRead(IoService* service, Client* client) -> void;
 
-  auto OnWrite(IoService* service, Client* client) -> void;
+  static auto OnWrite(IoService* service, Client* client) -> void;
 };*/

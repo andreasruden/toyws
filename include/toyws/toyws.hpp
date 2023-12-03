@@ -1,36 +1,37 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
-// #include "toyws/io_service.hpp"
+#include "toyws/http_request.hpp"
+#include "toyws/http_response.hpp"
+#include "toyws/io_service.hpp"
+#include "toyws/request_handler.hpp"
 #include "toyws/toyws_export.hpp"
 
 namespace toyws {
 
 /**
- * @brief Main app class for using Toy Web Server. There may exist only one of
- * these per process.
+ * @brief Main app class for using Toy Web Server.
  */
 class TOYWS_EXPORT ToyWs {
  public:
-  ToyWs();
+  ToyWs(std::string address, uint16_t port);
 
-  ~ToyWs();
+  auto Run() -> void;
 
-  static auto Instance() -> ToyWs* { return instance; }
+  auto Stop() -> void;
 
-  auto Run() -> void { /*ioService.Run();*/ }
-
-  auto Stop() -> void { /*ioService.Stop();*/ }
+  auto HandleRequest(const HttpRequest& request) -> HttpResponse;
 
  private:
-  static ToyWs* instance;  // singleton reference; no ownership
-                           // TODO: thread-safety
+  std::string listeningAddress;
+  uint16_t listeningPort;
+  IoService<RequestHandler> ioService;
 
   // Suppress MSVC warning about containing data types that are not exported.
   // This is okay if non-exported types are private members & not part of API.
-  TOYWS_SUPPRESS_C4251
-  // IoService ioService;
+  // TOYWS_SUPPRESS_C4251
 };
 
 }  // namespace toyws

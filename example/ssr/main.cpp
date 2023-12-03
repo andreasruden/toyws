@@ -5,7 +5,7 @@
 #include "toyws/error.hpp"
 #include "toyws/toyws.hpp"
 
-toyws::ToyWs instance;
+toyws::ToyWs instance{"127.0.0.1", 5000};
 
 auto SigIntHandler(int signal) -> void {
   if (signal == SIGINT) {

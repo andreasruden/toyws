@@ -1,21 +1,28 @@
 #include "toyws/toyws.hpp"
 
-#include <cassert>
-#include <string>
+#include <format>
+#include <iostream>
 
-#include "toyws/error.hpp"
+#include "toyws/http_request.hpp"
+#include "toyws/http_response.hpp"
 
-toyws::ToyWs* toyws::ToyWs::instance = nullptr;
+toyws::ToyWs::ToyWs(std::string address, uint16_t port)
+    : listeningAddress{std::move(address)}, listeningPort{port} {}
 
-toyws::ToyWs::ToyWs() {
-  if (instance != nullptr) {
-    throw Error("There may only be one ToyWs instance");
-  }
-
-  instance = this;
+auto toyws::ToyWs::Run() -> void {
+  auto socket = ioService.MakeListeningSocket(listeningAddress, listeningPort);
+  ioService.AsyncAccept(socket);
+  ioService.Run();
 }
 
-toyws::ToyWs::~ToyWs() {
-  assert(instance == this);
-  instance = nullptr;
+auto toyws::ToyWs::Stop() -> void { ioService.Stop(); }
+
+auto toyws::ToyWs::HandleRequest(const HttpRequest& request)
+    -> toyws::HttpResponse {
+  // TODO: Logging instead of cout
+  std::cout << std::format("[{}] {} {}\n", "TODO: client addr",
+                           HttpMethodName(request.Method()),
+                           request.Resource());
+  HttpResponse response{HttpStatus::kOk};
+  return response;
 }

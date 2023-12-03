@@ -17,8 +17,9 @@ include(cmake/variables.cmake)
 
 add_library(
     toyws_toyws
-    source/http_io.cpp
     source/client_pool.cpp
+    source/http_io.cpp
+    source/request_handler.cpp
     source/test_client.cpp
     source/toyws.cpp
 )

@@ -14,6 +14,7 @@
 namespace toyws {
 
 class Client;
+class ToyWs;
 
 inline constexpr int kAcceptQueue = 5;
 inline constexpr int kSqSize = 16;
@@ -51,6 +52,9 @@ class IoService {
   // Shorthand for: TakeClient() and then client.Socket().close()
   auto Close(Client* client) -> void;
 
+  auto SetInstance(ToyWs* parent) -> void { parentInst = parent; }
+  auto Instance() const -> ToyWs* { return parentInst; }
+
  private:
   io_uring ring = {};
   sockaddr_in clientName = {};
@@ -63,6 +67,8 @@ class IoService {
   std::size_t nextClientSlot = 0;
   std::vector<std::unique_ptr<Client>> clients;
   std::vector<iovec> bufferDescriptors;
+
+  ToyWs* parentInst;
 
   auto CreateIoRing() -> void;
 
