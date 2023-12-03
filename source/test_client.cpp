@@ -8,6 +8,12 @@
 
 #include "toyws/error.hpp"
 
+toyws::TestClient::~TestClient() {
+  if (socketFd != 0) {
+    close(socketFd);
+  }
+}
+
 auto toyws::TestClient::Request(HttpMethod method, const std::string& route)
     -> HttpResponse {
   constexpr std::size_t bufSize = 2048;
@@ -29,7 +35,21 @@ auto toyws::TestClient::Request(HttpMethod method, const std::string& route)
     recvRes = response.Read(buf, sz);
   } while (!recvRes);
 
+  close(socketFd);
+  socketFd = 0;
+
   return response;
+}
+
+auto toyws::TestClient::RawRequest(const std::string& data,
+                                   std::size_t responseBufferSize)
+    -> std::string {
+  Send(data.data(), data.size());
+  std::string buf;
+  buf.resize(responseBufferSize);
+  auto sz = Recv(buf.data(), responseBufferSize);
+  buf.resize(sz);
+  return buf;
 }
 
 auto toyws::TestClient::Connect() -> void {

@@ -2,8 +2,7 @@
 
 #include <string>
 
-#include "toyws/io_service.hpp"
-#include "toyws/request_pool.hpp"
+// #include "toyws/io_service.hpp"
 #include "toyws/toyws_export.hpp"
 
 namespace toyws {
@@ -20,11 +19,9 @@ class TOYWS_EXPORT ToyWs {
 
   static auto Instance() -> ToyWs* { return instance; }
 
-  auto RequestPool() -> RequestPool& { return requestPool; }
+  auto Run() -> void { /*ioService.Run();*/ }
 
-  auto Run() -> void { ioService.Run(); }
-
-  auto Stop() -> void { ioService.Stop(); }
+  auto Stop() -> void { /*ioService.Stop();*/ }
 
  private:
   static ToyWs* instance;  // singleton reference; no ownership
@@ -33,8 +30,7 @@ class TOYWS_EXPORT ToyWs {
   // Suppress MSVC warning about containing data types that are not exported.
   // This is okay if non-exported types are private members & not part of API.
   TOYWS_SUPPRESS_C4251
-  IoService ioService;
-  class RequestPool requestPool;
+  // IoService ioService;
 };
 
 }  // namespace toyws

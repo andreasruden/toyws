@@ -1,22 +1,25 @@
 #pragma once
 
+#include <liburing.h>
+#include <netinet/in.h>
 #include <sys/uio.h>
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
-struct io_uring;
-struct io_uring_cqe;
-struct sockaddr_in;
+#include "toyws/client_pool.hpp"
+#include "toyws/socket.hpp"
 
 namespace toyws {
 
-class Request;
+class Client;
 
 inline constexpr int kAcceptQueue = 5;
 inline constexpr int kSqSize = 16;
 inline constexpr int kCqSize = 64;
 
+template <typename Handler>
 class IoService {
  public:
   explicit IoService();
@@ -29,29 +32,39 @@ class IoService {
 
   auto Stop() -> void;
 
- private:
-  std::unique_ptr<io_uring> ring;
-  std::string address;
-  unsigned short port;
-  int listeningFd;
-  std::unique_ptr<sockaddr_in> clientName;
-  unsigned int clientNameLen;
-  int submissions;
-  bool submitAlways;
+  auto MakeListeningSocket(std::string address, uint16_t port) -> Socket;
 
-  std::size_t nextReqSlot;
-  std::vector<std::unique_ptr<Request>> requests;
+  auto AsyncAccept(Socket listeningFd) -> void;
+
+  // Precondition: Client must exist in IoService already.
+  //               Either via AsyncAccept() or GiveClient().
+  auto AsyncRead(int clientSlot) -> void;
+
+  // Precondition: Client must exist in IoService already.
+  //               Either via AsyncAccept() or GiveClient().
+  auto AsyncWrite(int clientSlot) -> void;
+
+  auto TakeClient(int clientSlot) -> std::unique_ptr<Client>;
+
+  auto GiveClient(std::unique_ptr<Client> client) -> void;
+
+  // Shorthand for: TakeClient() and then client.Socket().close()
+  auto Close(Client* client) -> void;
+
+ private:
+  io_uring ring = {};
+  sockaddr_in clientName = {};
+  unsigned int clientNameLen = sizeof(sockaddr_in);
+  int submissions = 0;
+  bool submitAlways = true;
+  bool running = false;
+
+  ClientPool clientPool;
+  std::size_t nextClientSlot = 0;
+  std::vector<std::unique_ptr<Client>> clients;
   std::vector<iovec> bufferDescriptors;
 
-  auto MakeListeningSocket() -> void;
-
   auto CreateIoRing() -> void;
-
-  auto AsyncAccept() -> void;
-
-  auto AsyncRead(std::size_t reqSlot) -> void;
-
-  auto AsyncWrite(std::size_t reqSlot) -> void;
 
   auto ShouldSubmit() const -> bool {
     return submitAlways || submissions >= kSqSize;

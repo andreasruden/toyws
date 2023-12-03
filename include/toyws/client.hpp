@@ -9,13 +9,14 @@ inline constexpr int kBufferSize = 2048;
 namespace toyws {
 
 /**
- * @brief Represents an on-going HTTP request.
+ * @brief Represents a connection to a client (including before it is accepted)
+ * with current state & a read/write buffer.
  */
-class TOYWS_EXPORT Request {
+class TOYWS_EXPORT Client {
  public:
   enum class States { kAccept = 0, kRead, kWrite, kFinished };
 
-  Request() { buffer.resize(kBufferSize); }
+  Client() { buffer.resize(kBufferSize); }
 
   auto State() const -> States { return state; }
   auto SetState(States newState) -> void { state = newState; }
@@ -23,10 +24,13 @@ class TOYWS_EXPORT Request {
   auto Socket() const -> int { return clientFd; }
   auto SetSocket(int fd) -> void { clientFd = fd; }
 
+  auto IoServiceSlot() const -> int { return ioServiceSlot; }
+  auto SetIoServiceSlot(int slot) -> void { ioServiceSlot = slot; }
+
   /**
    * @brief Buffer for network reading/writing.
    */
-  auto Buffer() -> std::vector<unsigned char>& { return buffer; }
+  auto Buffer() -> std::vector<char>& { return buffer; }
 
   /**
    * @brief How much content is in the buffer. Bytes in range
@@ -40,9 +44,10 @@ class TOYWS_EXPORT Request {
 
  private:
   States state = States::kAccept;
-  int clientFd;
-  std::vector<unsigned char> buffer;
-  std::size_t bufferContentSize;
+  int clientFd = 0;
+  int ioServiceSlot = -1;
+  std::vector<char> buffer;
+  std::size_t bufferContentSize = 0;
 };
 
 }  // namespace toyws

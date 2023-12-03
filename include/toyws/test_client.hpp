@@ -13,9 +13,11 @@ namespace toyws {
 
 class TestClient {
  public:
-  explicit TestClient(std::string serverAddress = "127.0.0.1",
-                      const std::uint16_t serverPort = 5000)
+  explicit TestClient(const std::uint16_t serverPort = 5000,
+                      std::string serverAddress = "127.0.0.1")
       : address{std::move(serverAddress)}, port{serverPort} {}
+
+  ~TestClient();
 
   auto Headers() -> HeadersMap& { return headers; }
   auto Headers() const -> const HeadersMap& { return headers; }
@@ -26,11 +28,14 @@ class TestClient {
     return Request(HttpMethod::GET, route);
   }
 
+  auto RawRequest(const std::string& data, std::size_t responseBufferSize)
+      -> std::string;
+
  private:
   std::string address;
   std::uint16_t port;
   HeadersMap headers;
-  int socketFd;
+  int socketFd = 0;
 
   auto Connect() -> void;
 

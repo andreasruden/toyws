@@ -175,7 +175,7 @@ auto ReadUntilDelim(const char* data, std::size_t i, const std::size_t length,
       break;
     } else if (c == '\r' || c == '\n') {
       throw toyws::Error(fmt::format(
-          "HttpRequest::ReadUntilDelim: Newline before expected delimiter {}",
+          "HttpIo::ReadUntilDelim: Newline before expected delimiter {}",
           delim));
     } else {
       buf += c;
@@ -190,7 +190,7 @@ auto ConsumeNewline(const char* data, std::size_t i, std::size_t length)
   if (i < length + 1 && data[i] == '\r' && data[i + 1] == '\n') {
     return i + 2;
   }
-  throw toyws::Error("HttpRequest: Expected newline");
+  throw toyws::Error("HttpIo: Expected newline");
 }
 
 auto ParseRequestLine(const char* data, std::size_t i, const std::size_t length,
@@ -228,7 +228,7 @@ auto ParseStatusLine(const char* data, std::size_t i, std::size_t length,
   HttpResponseEditor::SetStatus(target, toyws::ParseHttpStatus(buf));
   buf.clear();
 
-  i = ReadUntilDelim(data, i, length, '\r', buf) + 1;
+  i = ReadUntilDelim(data, i, length, '\r', buf);
   HttpResponseEditor::SetReason(target, buf);
   buf.clear();
 

@@ -18,8 +18,7 @@ include(cmake/variables.cmake)
 add_library(
     toyws_toyws
     source/http_io.cpp
-    source/io_service_uring.cpp
-    source/request_pool.cpp
+    source/client_pool.cpp
     source/test_client.cpp
     source/toyws.cpp
 )
@@ -54,6 +53,12 @@ target_include_directories(
 )
 
 target_include_directories(
+    toyws_toyws ${warning_guard}
+    PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/source>"
+)
+
+target_include_directories(
     toyws_toyws SYSTEM
     PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export>"
@@ -64,7 +69,7 @@ target_compile_features(toyws_toyws PUBLIC cxx_std_20)
 find_package(fmt REQUIRED)
 find_package(liburing REQUIRED)
 target_link_libraries(toyws_toyws PRIVATE fmt::fmt)
-target_link_libraries(toyws_toyws PRIVATE liburing::liburing)
+target_link_libraries(toyws_toyws PUBLIC liburing::liburing)
 
 # ---- Examples ----
 # TODO: Only include if examples are "requested"

@@ -6,11 +6,11 @@
 
 namespace toyws {
 
-class Request;
+class Client;
 
-class TOYWS_EXPORT RequestPool {
+class TOYWS_EXPORT ClientPool {
  public:
-  auto Acquire() -> std::unique_ptr<Request>;
+  auto Acquire() -> std::unique_ptr<Client>;
 };
 
 }  // namespace toyws

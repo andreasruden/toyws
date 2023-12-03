@@ -1,47 +1,38 @@
-#include "toyws/io_service_uring.hpp"
-
 #include <arpa/inet.h>
-#include <fmt/core.h>
-#include <liburing.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
 
 #include <cassert>
 #include <cerrno>
 #include <cstring>
+#include <format>
 
+#include "toyws/client.hpp"
 #include "toyws/error.hpp"
-#include "toyws/request.hpp"
+#include "toyws/io_service.hpp"
 #include "toyws/toyws.hpp"
 
-toyws::IoService::IoService()
-    : ring{std::make_unique<io_uring>()},
-      address{"127.0.0.1"},
-      port{5000},
-      clientNameLen{sizeof(sockaddr_in)},
-      submitAlways{true} {
-  requests.resize(kSqSize + kCqSize);
+template <typename Handler>
+toyws::IoService<Handler>::IoService() {
+  clients.resize(kSqSize + kCqSize);
   bufferDescriptors.resize(kSqSize + kCqSize);
-}
-
-toyws::IoService::~IoService() {
-  if (ring) {
-    io_uring_queue_exit(ring.get());
-  }
-}
-
-auto toyws::IoService::Run() -> void {
-  MakeListeningSocket();
 
   CreateIoRing();
+}
 
-  AsyncAccept();
+template <typename Handler>
+toyws::IoService<Handler>::~IoService() {
+  io_uring_queue_exit(&ring);
+}
 
-  while (true) {
+template <typename Handler>
+auto toyws::IoService<Handler>::Run() -> void {
+  // TODO: Add dummy fd as an event based wakeup, to notice running = false
+  running = true;
+  while (running) {
     io_uring_cqe* cqe;
-    if (int res = io_uring_wait_cqe(ring.get(), &cqe); res != 0) {
+    if (int res = io_uring_wait_cqe(&ring, &cqe); res != 0) {
       throw Error(
-          fmt::format("Error in io_uring_wait_cqe(): {}", std::strerror(-res)));
+          std::format("Error in io_uring_wait_cqe(): {}", std::strerror(-res)));
     }
 
     submitAlways = false;
@@ -49,8 +40,8 @@ auto toyws::IoService::Run() -> void {
     while (true) {
       HandleCqe(cqe);
 
-      io_uring_cqe_seen(ring.get(), cqe);
-      if (io_uring_peek_cqe(ring.get(), &cqe) == -EAGAIN) {
+      io_uring_cqe_seen(&ring, cqe);
+      if (io_uring_peek_cqe(&ring, &cqe) == -EAGAIN) {
         break;
       }
     }
@@ -63,23 +54,25 @@ auto toyws::IoService::Run() -> void {
   }
 }
 
-auto toyws::IoService::Stop() -> void {
-  io_uring_queue_exit(ring.get());
-  ring = nullptr;
+template <typename Handler>
+auto toyws::IoService<Handler>::Stop() -> void {
+  running = false;
 }
 
-auto toyws::IoService::MakeListeningSocket() -> void {
+template <typename Handler>
+auto toyws::IoService<Handler>::MakeListeningSocket(std::string address,
+                                                    uint16_t port) -> Socket {
   // Create socket file descriptor
-  listeningFd = socket(PF_INET, SOCK_STREAM, 0);
+  int listeningFd = socket(PF_INET, SOCK_STREAM, 0);
   if (listeningFd == -1) {
-    throw Error(fmt::format("Error in socket(): {}", std::strerror(errno)));
+    throw Error(std::format("Error in socket(): {}", std::strerror(errno)));
   }
 
   // Allow address reuse (for quick server restarts)
   const int on = 1;
   if (setsockopt(listeningFd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) ==
       -1) {
-    throw Error(fmt::format("Error in setsockopt(): {}", std::strerror(errno)));
+    throw Error(std::format("Error in setsockopt(): {}", std::strerror(errno)));
   }
 
   // Assign name to socket
@@ -91,107 +84,154 @@ auto toyws::IoService::MakeListeningSocket() -> void {
   }
   if (bind(listeningFd, reinterpret_cast<const sockaddr*>(&name),
            sizeof(name)) == -1) {
-    throw Error(fmt::format("Error in bind(): {}", std::strerror(errno)));
+    throw Error(std::format("Error in bind(): {}", std::strerror(errno)));
   }
 
   // Listen
   if (listen(listeningFd, kAcceptQueue) == -1) {
-    throw Error(fmt::format("Error in listen(): {}", std::strerror(errno)));
+    throw Error(std::format("Error in listen(): {}", std::strerror(errno)));
   }
+
+  return listeningFd;
 }
 
-auto toyws::IoService::CreateIoRing() -> void {
+template <typename Handler>
+auto toyws::IoService<Handler>::CreateIoRing() -> void {
   // TODO: Look into IORING_SETUP_SQPOLL
   io_uring_params params{};
   params.cq_entries = kCqSize;
 
-  if (auto res = io_uring_queue_init_params(kSqSize, ring.get(), &params);
-      res < 0) {
-    throw Error(fmt::format("Error in io_uring_queue_init_params(): {}",
+  if (auto res = io_uring_queue_init_params(kSqSize, &ring, &params); res < 0) {
+    throw Error(std::format("Error in io_uring_queue_init_params(): {}",
                             std::strerror(-res)));
   }
 }
 
-auto toyws::IoService::AsyncAccept() -> void {
-  auto* sqe = io_uring_get_sqe(ring.get());
+template <typename Handler>
+auto toyws::IoService<Handler>::AsyncAccept(Socket listeningFd) -> void {
+  auto* sqe = io_uring_get_sqe(&ring);
   assert(sqe != nullptr);  // null if SQ is full
 
   io_uring_prep_accept(sqe, listeningFd,
-                       reinterpret_cast<sockaddr*>(clientName.get()),
-                       &clientNameLen, 0);
+                       reinterpret_cast<sockaddr*>(&clientName), &clientNameLen,
+                       0);
 
-  auto request = ToyWs::Instance()->RequestPool().Acquire();
-  const std::size_t slot = nextReqSlot;
-  nextReqSlot = (nextReqSlot + 1) % requests.size();
-  requests[slot] = std::move(request);
+  auto client = clientPool.Acquire();
+  // FIXME: Ensure we get an empty slot
+  const std::size_t slot = nextClientSlot;
+  nextClientSlot = (nextClientSlot + 1) % clients.size();
+  client->SetSocket(listeningFd);
+  client->SetIoServiceSlot(static_cast<int>(slot));
+  clients[slot] = std::move(client);
   io_uring_sqe_set_data64(sqe, slot);
 
   Submit();
 }
 
-auto toyws::IoService::AsyncRead(const std::size_t reqSlot) -> void {
-  auto* sqe = io_uring_get_sqe(ring.get());
+template <typename Handler>
+auto toyws::IoService<Handler>::AsyncRead(int clientSlot) -> void {
+  assert(clientSlot >= 0);
+
+  auto* sqe = io_uring_get_sqe(&ring);
   assert(sqe != nullptr);  // null if SQ is full
 
-  auto& request = requests[reqSlot];
-  bufferDescriptors[reqSlot].iov_base = request->Buffer().data();
-  bufferDescriptors[reqSlot].iov_len = request->Buffer().size();
-  io_uring_prep_readv(sqe, request->Socket(), &bufferDescriptors[reqSlot], 1,
-                      0);
-  io_uring_sqe_set_data64(sqe, reqSlot);
-  request->SetState(Request::States::kRead);
+  auto slot = static_cast<std::size_t>(clientSlot);
+  auto& client = clients[slot];
+  bufferDescriptors[slot].iov_base = client->Buffer().data();
+  bufferDescriptors[slot].iov_len = client->Buffer().size();
+  io_uring_prep_readv(sqe, client->Socket(), &bufferDescriptors[slot], 1, 0);
+  io_uring_sqe_set_data64(sqe, slot);
+  client->SetState(Client::States::kRead);
 
   Submit();
 }
 
-auto toyws::IoService::AsyncWrite(const std::size_t reqSlot) -> void {
-  auto* sqe = io_uring_get_sqe(ring.get());
+template <typename Handler>
+auto toyws::IoService<Handler>::AsyncWrite(int clientSlot) -> void {
+  assert(clientSlot >= 0);
+
+  auto* sqe = io_uring_get_sqe(&ring);
   assert(sqe != nullptr);  // null if SQ is full
 
-  auto& request = requests[reqSlot];
-  bufferDescriptors[reqSlot].iov_base = request->Buffer().data();
-  bufferDescriptors[reqSlot].iov_len = request->BufferContentSize();
-  io_uring_prep_writev(sqe, request->Socket(), &bufferDescriptors[reqSlot], 1,
-                       0);
-  io_uring_sqe_set_data64(sqe, reqSlot);
-  request->SetState(Request::States::kWrite);
+  auto slot = static_cast<std::size_t>(clientSlot);
+  auto& client = clients[slot];
+  bufferDescriptors[slot].iov_base = client->Buffer().data();
+  bufferDescriptors[slot].iov_len = client->BufferContentSize();
+  io_uring_prep_writev(sqe, client->Socket(), &bufferDescriptors[slot], 1, 0);
+  io_uring_sqe_set_data64(sqe, slot);
+  client->SetState(Client::States::kWrite);
 
   Submit();
 }
 
-auto toyws::IoService::ForceSubmit() -> void {
-  io_uring_submit(ring.get());
+template <typename Handler>
+auto toyws::IoService<Handler>::TakeClient(int clientSlot)
+    -> std::unique_ptr<Client> {
+  assert(clientSlot >= 0);
+
+  auto slot = static_cast<std::size_t>(clientSlot);
+  auto ptr = std::move(clients[slot]);
+  clients[slot] = nullptr;
+  ptr->SetIoServiceSlot(-1);
+
+  return ptr;
+}
+
+template <typename Handler>
+auto toyws::IoService<Handler>::GiveClient(std::unique_ptr<Client> client)
+    -> void {
+  // FIXME: Ensure we get an empty slot
+  const std::size_t slot = nextClientSlot;
+  nextClientSlot = (nextClientSlot + 1) % clients.size();
+  client->SetIoServiceSlot(static_cast<int>(slot));
+  clients[slot] = std::move(client);
+}
+
+template <typename Handler>
+auto toyws::IoService<Handler>::Close(Client* client) -> void {
+  auto slot = static_cast<std::size_t>(client->IoServiceSlot());
+  assert(clients[slot].get() == client);
+
+  close(client->Socket());
+  clients[slot] = nullptr;
+}
+
+template <typename Handler>
+auto toyws::IoService<Handler>::ForceSubmit() -> void {
+  io_uring_submit(&ring);
   submissions = 0;
 }
 
-auto toyws::IoService::HandleCqe(io_uring_cqe* cqe) -> void {
+template <typename Handler>
+auto toyws::IoService<Handler>::HandleCqe(io_uring_cqe* cqe) -> void {
   // TODO: Should not automatically throw on error
   if (cqe->res < 0) {
     throw Error(
-        fmt::format("Error in async step: {}", std::strerror(-cqe->res)));
+        std::format("Error in async step: {}", std::strerror(-cqe->res)));
   }
 
   const auto slot = static_cast<std::size_t>(cqe->user_data);
-  auto& request = requests[slot];
-  switch (request->State()) {
-    case Request::States::kAccept:
-      request->SetSocket(cqe->res);
-      AsyncAccept();
-      AsyncRead(slot);
+  auto& client = clients[slot];
+  assert(static_cast<int>(slot) == client->IoServiceSlot());
+  switch (client->State()) {
+    case Client::States::kAccept: {
+      Socket listeningFd = client->Socket();
+      client->SetSocket(cqe->res);
+      Handler::OnAccept(this, listeningFd, client.get());
       break;
-    case Request::States::kRead:
+    }
+    case Client::States::kRead:
       // TODO: Keep reading if there's still stuff to be read
       if (cqe->res == 0) {
-        // TODO: Handle empty request
+        // TODO: Handle error
       }
       assert(cqe->res >= 0);
-      request->SetBufferContentSize(static_cast<std::size_t>(cqe->res));
-      AsyncWrite(slot);
+      client->SetBufferContentSize(static_cast<std::size_t>(cqe->res));
+      Handler::OnRead(this, client.get());
       break;
-    case Request::States::kWrite:
-      // TODO: only remove if all writing is finished
-      close(request->Socket());
-      requests[slot] = nullptr;
+    case Client::States::kWrite:
+      // TODO: Verify all was wr itten?
+      Handler::OnWrite(this, client.get());
       break;
     default:
       assert(false && "Unhandled Request::State in HandleCqe");
