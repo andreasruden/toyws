@@ -20,6 +20,7 @@ add_library(
     source/client_pool.cpp
     source/http_io.cpp
     source/request_handler.cpp
+    source/router.cpp
     source/test_client.cpp
     source/toyws.cpp
 )

@@ -20,6 +20,7 @@ include(Catch)
 add_executable(toyws_test
     source/http_io_test.cpp
     source/io_service_test.cpp
+    source/router_test.cpp
     source/toyws_test.cpp
 )
 target_link_libraries(
